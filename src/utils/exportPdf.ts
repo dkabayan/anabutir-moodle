@@ -20,11 +20,11 @@ const EMERALD_TEXT: [number, number, number] = [4, 120, 87];
 const AMBER_TEXT: [number, number, number] = [180, 83, 9];
 const CRIMSON_TEXT: [number, number, number] = [185, 28, 28];
 
-export function exportReportToPdf(
+function buildReportPdfDoc(
   report: AnalysisReport,
   metadata: ReportMetadata,
   options: ExportOptions
-): void {
+): { doc: JsPdfWithAutoTable; fileName: string } {
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
@@ -37,12 +37,24 @@ export function exportReportToPdf(
   const totalQ = report.questions.length;
 
   let cursorY = 14;
+  let headerTextX = marginX;
+
+  // Optional School Logo on Kop
+  if (metadata.schoolLogo && metadata.schoolLogo.startsWith('data:image/')) {
+    try {
+      const imgFormat = metadata.schoolLogo.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(metadata.schoolLogo, imgFormat, marginX, 10.5, 16, 16);
+      headerTextX = marginX + 20;
+    } catch {
+      headerTextX = marginX;
+    }
+  }
 
   // Institutional Header
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...BLUE);
-  doc.text((metadata.schoolName || 'LAPORAN EVALUASI PEMBELAJARAN').toUpperCase(), marginX, cursorY);
+  doc.text((metadata.schoolName || 'LAPORAN EVALUASI PEMBELAJARAN').toUpperCase(), headerTextX, cursorY);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
@@ -53,7 +65,7 @@ export function exportReportToPdf(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
   doc.setTextColor(...NAVY);
-  doc.text('LAPORAN ANALISIS BUTIR SOAL (LMS MOODLE)', marginX, cursorY);
+  doc.text('LAPORAN ANALISIS BUTIR SOAL (LMS MOODLE)', headerTextX, cursorY);
 
   cursorY += 5.5;
   doc.setFont('helvetica', 'normal');
@@ -71,7 +83,7 @@ export function exportReportToPdf(
   ]
     .filter(Boolean)
     .join('  ·  ');
-  doc.text(subLine, marginX, cursorY);
+  doc.text(subLine, headerTextX, cursorY);
 
   cursorY += 4;
   doc.setDrawColor(...NAVY);
@@ -570,5 +582,24 @@ export function exportReportToPdf(
   }
 
   const fileSlug = slugifyFileName(report.summary.quizName);
-  doc.save(`Laporan_Analisis_Butir_Soal_${fileSlug}.pdf`);
+  return { doc, fileName: `Laporan_Analisis_Butir_Soal_${fileSlug}.pdf` };
+}
+
+export function exportReportToPdf(
+  report: AnalysisReport,
+  metadata: ReportMetadata,
+  options: ExportOptions
+): void {
+  const { doc, fileName } = buildReportPdfDoc(report, metadata, options);
+  doc.save(fileName);
+}
+
+export function exportReportToPdfBlob(
+  report: AnalysisReport,
+  metadata: ReportMetadata,
+  options: ExportOptions
+): { blob: Blob; fileName: string } {
+  const { doc, fileName } = buildReportPdfDoc(report, metadata, options);
+  const blob = doc.output('blob');
+  return { blob, fileName };
 }

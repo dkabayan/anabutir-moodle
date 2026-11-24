@@ -1,27 +1,49 @@
-import { FileSpreadsheet, FileText } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Archive, FileSpreadsheet, FileText, ImagePlus, Trash2 } from 'lucide-react';
 import { AnalysisReport, ExportOptions, ReportMetadata } from '../types/analysis';
+import { readLogoFileAsDataUrl } from '../utils/logoHelper';
 
 interface ExportSectionProps {
   report: AnalysisReport;
+  reportsCount: number;
   metadata: ReportMetadata;
   options: ExportOptions;
   onChangeMetadata: (next: ReportMetadata) => void;
   onChangeOptions: (next: ExportOptions) => void;
   onExportPdf: () => void;
   onExportExcel: () => void;
+  onExportBatchZip: () => void;
+  isExportingZip?: boolean;
 }
 
 export function ExportSection({
   report,
+  reportsCount,
   metadata,
   options,
   onChangeMetadata,
   onChangeOptions,
   onExportPdf,
   onExportExcel,
+  onExportBatchZip,
+  isExportingZip = false,
 }: ExportSectionProps) {
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
+
   const updateField = (key: keyof ReportMetadata, value: string) => {
     onChangeMetadata({ ...metadata, [key]: value });
+  };
+
+  const handleLogoChange = async (file: File | undefined) => {
+    if (!file) return;
+    setLogoError(null);
+    try {
+      const dataUrl = await readLogoFileAsDataUrl(file);
+      updateField('schoolLogo', dataUrl);
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'Gagal memuat logo.');
+    }
   };
 
   const toggleOption = (key: keyof ExportOptions) => {
@@ -63,6 +85,56 @@ export function ExportSection({
                 placeholder="Contoh: SMA Negeri 1 Nusantara"
                 className={inputClass}
               />
+            </div>
+
+            <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200/80">
+              <div className="flex items-center gap-3">
+                {metadata.schoolLogo ? (
+                  <img
+                    src={metadata.schoolLogo}
+                    alt="Logo Sekolah"
+                    className="w-10 h-10 object-contain rounded border border-slate-200 bg-white p-0.5"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400">
+                    <ImagePlus className="w-4 h-4" aria-hidden="true" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs font-medium text-slate-700">Logo Sekolah (Kop PDF)</p>
+                  <p className="text-[11px] text-slate-500">PNG/JPG maks 2 MB</p>
+                  {logoError && <p className="text-[11px] text-red-600 mt-0.5">{logoError}</p>}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="hidden"
+                  onChange={(e) => {
+                    void handleLogoChange(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                >
+                  {metadata.schoolLogo ? 'Ganti Logo' : 'Unggah Logo'}
+                </button>
+                {metadata.schoolLogo && (
+                  <button
+                    type="button"
+                    onClick={() => updateField('schoolLogo', '')}
+                    className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                    title="Hapus logo"
+                  >
+                    <Trash2 className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div>
@@ -342,6 +414,22 @@ export function ExportSection({
               <FileSpreadsheet className="w-4 h-4 text-emerald-700" aria-hidden="true" />
               <span>Unduh Workbook Excel (.xlsx)</span>
             </button>
+
+            {reportsCount > 1 && (
+              <button
+                type="button"
+                disabled={isExportingZip}
+                onClick={onExportBatchZip}
+                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Archive className="w-4 h-4" aria-hidden="true" />
+                <span>
+                  {isExportingZip
+                    ? 'Membuat Arsip ZIP...'
+                    : `Ekspor Semua Kelas (${reportsCount} Kelas · .zip)`}
+                </span>
+              </button>
+            )}
 
             <p className="text-xs text-slate-500 text-center pt-1">
               Seluruh proses konversi berjalan langsung di peramban tanpa mengirim data siswa ke

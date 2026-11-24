@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { CompositionSection } from './components/CompositionSection';
 import { DistractorAnalysisSection } from './components/DistractorAnalysisSection';
@@ -13,15 +13,16 @@ import {
   ExportOptions,
   ReportMetadata,
 } from './types/analysis';
+import { exportBatchReportsToZip } from './utils/exportBatchZip';
 import { exportReportToExcel } from './utils/exportExcel';
 import { exportReportToPdf } from './utils/exportPdf';
 import { getTodayIndonesianDate } from './utils/format';
 import {
   buildFullMcDemoFromCsv,
   parseCsvToRows,
-  parseMoodleFile,
   parseMoodleRows,
 } from './utils/moodleParser';
+import { parseMoodleFileInWorker } from './utils/moodleWorkerClient';
 import { StudentGradesImport } from './utils/scoreDistribution';
 
 type ActiveTab = 'overview' | 'items' | 'distractors' | 'composition' | 'export';
@@ -30,6 +31,7 @@ const SAMPLE_CSV_PATH =
   '/assets/aistudio/INGGRIS_KHAS_KELAS_X-ASTS_I_20262027_INGGRIS_KHAS-completestats_60391fd1.csv';
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB security limit against DoS / memory exhaustion
+const METADATA_STORAGE_KEY = 'anabutir_metadata_v1';
 
 const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   includeSummary: true,
@@ -40,6 +42,17 @@ const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   includeSignature: true,
 };
 
+function loadSavedMetadata(): Partial<ReportMetadata> {
+  try {
+    const raw = window.localStorage.getItem(METADATA_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Partial<ReportMetadata>) : {};
+  } catch {
+    return {};
+  }
+}
+
 function createInitialMetadata(report?: AnalysisReport, prevMeta?: ReportMetadata): ReportMetadata {
   const course = report?.summary.courseName || '';
   const yearMatch = report?.summary.quizName.match(/20\d{2}\/20\d{2}/);
@@ -47,6 +60,7 @@ function createInitialMetadata(report?: AnalysisReport, prevMeta?: ReportMetadat
 
   return {
     schoolName: prevMeta?.schoolName || 'SMA Plus Muthahhari',
+    schoolLogo: prevMeta?.schoolLogo || '',
     subjectName: prevMeta?.subjectName || course,
     className: prevMeta?.className || (classMatch ? classMatch[0] : ''),
     academicYear: prevMeta?.academicYear || (yearMatch ? yearMatch[0] : '2026/2027'),
@@ -68,9 +82,21 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedQuestionSlot, setSelectedQuestionSlot] = useState<string | null>(null);
-  const [metadata, setMetadata] = useState<ReportMetadata>(() => createInitialMetadata());
+  const [metadata, setMetadata] = useState<ReportMetadata>(() => {
+    const saved = loadSavedMetadata();
+    return createInitialMetadata(undefined, saved as ReportMetadata);
+  });
   const [exportOptions, setExportOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
+  const [isExportingZip, setIsExportingZip] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(METADATA_STORAGE_KEY, JSON.stringify(metadata));
+    } catch {
+      // Ignore quota exceeded errors silently
+    }
+  }, [metadata]);
 
   const reuploadInputRef = useRef<HTMLInputElement | null>(null);
   const report = reports[activeReportIndex] ?? null;
@@ -108,7 +134,7 @@ export default function App() {
         if (file.size > MAX_FILE_SIZE_BYTES) {
           throw new Error(`Ukuran berkas "${file.name}" melebihi batas 25MB.`);
         }
-        parsedList.push(await parseMoodleFile(file));
+        parsedList.push(await parseMoodleFileInWorker(file));
       }
       if (parsedList.length === 0) return;
       applyParsedReports(parsedList);
@@ -136,7 +162,7 @@ export default function App() {
         if (file.size > MAX_FILE_SIZE_BYTES) {
           throw new Error(`Ukuran berkas "${file.name}" melebihi batas 25MB.`);
         }
-        added.push(await parseMoodleFile(file));
+        added.push(await parseMoodleFileInWorker(file));
       }
       if (added.length > 0) {
         setReports((prev) => [...prev, ...added]);
@@ -199,6 +225,19 @@ export default function App() {
     if (!report) return;
     exportReportToExcel(report, metadata, exportOptions);
     showToast('Workbook Excel (.xlsx) berhasil dibuat dan diunduh.');
+  };
+
+  const handleExportBatchZip = async () => {
+    if (reports.length === 0) return;
+    setIsExportingZip(true);
+    try {
+      await exportBatchReportsToZip(reports, metadata, exportOptions);
+      showToast(`Arsip ZIP (${reports.length} kelas · PDF & Excel) berhasil diunduh.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Gagal membuat arsip ZIP.');
+    } finally {
+      setIsExportingZip(false);
+    }
   };
 
   const selectedIndex =
@@ -394,12 +433,15 @@ export default function App() {
             {activeTab === 'export' && (
               <ExportSection
                 report={report}
+                reportsCount={reports.length}
                 metadata={metadata}
                 options={exportOptions}
                 onChangeMetadata={setMetadata}
                 onChangeOptions={setExportOptions}
                 onExportPdf={handleExportPdf}
                 onExportExcel={handleExportExcel}
+                onExportBatchZip={() => void handleExportBatchZip()}
+                isExportingZip={isExportingZip}
               />
             )}
           </main>

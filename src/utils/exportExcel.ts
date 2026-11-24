@@ -32,11 +32,11 @@ function safeAoaToSheet(rows: (string | number | null | undefined)[][]): XLSX.Wo
   return XLSX.utils.aoa_to_sheet(sanitized);
 }
 
-export function exportReportToExcel(
+function buildReportWorkbook(
   report: AnalysisReport,
   metadata: ReportMetadata,
   options: ExportOptions
-): void {
+): { wb: XLSX.WorkBook; fileName: string } {
   const wb = XLSX.utils.book_new();
   const totalQ = report.questions.length;
 
@@ -288,5 +288,24 @@ export function exportReportToExcel(
   }
 
   const fileSlug = slugifyFileName(report.summary.quizName);
-  XLSX.writeFile(wb, `Analisis_Butir_Soal_${fileSlug}.xlsx`);
+  return { wb, fileName: `Analisis_Butir_Soal_${fileSlug}.xlsx` };
+}
+
+export function exportReportToExcel(
+  report: AnalysisReport,
+  metadata: ReportMetadata,
+  options: ExportOptions
+): void {
+  const { wb, fileName } = buildReportWorkbook(report, metadata, options);
+  XLSX.writeFile(wb, fileName);
+}
+
+export function exportReportToExcelBuffer(
+  report: AnalysisReport,
+  metadata: ReportMetadata,
+  options: ExportOptions
+): { buffer: ArrayBuffer; fileName: string } {
+  const { wb, fileName } = buildReportWorkbook(report, metadata, options);
+  const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
+  return { buffer, fileName };
 }

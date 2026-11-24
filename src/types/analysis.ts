@@ -121,6 +121,7 @@ export interface AnalysisReport {
 
 export interface ReportMetadata {
   schoolName: string;
+  schoolLogo?: string; // Base64 Data URL (PNG/JPEG)
   subjectName: string;
   className: string;
   academicYear: string;

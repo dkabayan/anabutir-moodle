@@ -3,9 +3,12 @@ import {
   AlertCircle,
   FileSpreadsheet,
   FileText,
+  ImagePlus,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import { ReportMetadata } from '../types/analysis';
+import { readLogoFileAsDataUrl } from '../utils/logoHelper';
 
 interface UploadWorkspaceProps {
   onFilesSelected: (files: FileList) => Promise<void>;
@@ -27,10 +30,23 @@ export function UploadWorkspace({
   onChangeMetadata,
 }: UploadWorkspaceProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   const updateField = (key: keyof ReportMetadata, value: string) => {
     onChangeMetadata({ ...metadata, [key]: value });
+  };
+
+  const handleLogoChange = async (file: File | undefined) => {
+    if (!file) return;
+    setLogoError(null);
+    try {
+      const dataUrl = await readLogoFileAsDataUrl(file);
+      updateField('schoolLogo', dataUrl);
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'Gagal memuat logo.');
+    }
   };
 
   const handleFiles = async (files: FileList | null) => {
@@ -146,6 +162,60 @@ export function UploadWorkspace({
               placeholder="Contoh: Dr. H. Ahmad Dahlan, M.Pd."
               className="w-full px-3.5 py-2 text-sm bg-white border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors"
             />
+          </div>
+        </div>
+
+        {/* School Logo Upload Strip */}
+        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {metadata.schoolLogo ? (
+              <img
+                src={metadata.schoolLogo}
+                alt="Logo Sekolah"
+                className="w-10 h-10 object-contain rounded border border-slate-200 bg-slate-50 p-0.5"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center text-slate-400">
+                <ImagePlus className="w-4 h-4" aria-hidden="true" />
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-semibold text-slate-700">Logo Sekolah (Kop PDF)</p>
+              <p className="text-[11px] text-slate-500">
+                Opsional · Format PNG/JPG maks 2 MB · Disimpan otomatis di browser
+              </p>
+              {logoError && <p className="text-[11px] text-red-600 mt-0.5">{logoError}</p>}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={(e) => {
+                void handleLogoChange(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+            >
+              {metadata.schoolLogo ? 'Ganti Logo' : 'Unggah Logo'}
+            </button>
+            {metadata.schoolLogo && (
+              <button
+                type="button"
+                onClick={() => updateField('schoolLogo', '')}
+                className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                title="Hapus logo"
+              >
+                <Trash2 className="w-4 h-4" aria-hidden="true" />
+              </button>
+            )}
           </div>
         </div>
       </div>
